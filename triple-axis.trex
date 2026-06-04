@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <desktop-extension id="com.tableau.extensions.tripleaxis" extension-version="1.0.0">
+    <default-locale>en_US</default-locale>
+    <name resource-id="name">Triple Axis Chart Extension</name>
+    <description resource-id="description">Overcome Tableau's dual-axis limitation with fully configurable triple-axis combo charts. Map up to 3 independent Y-axes to any measures in your data source.</description>
+    <author name="Triple Axis Extension" email="support@example.com" organization="Tableau Extensions" website="https://example.com"/>
+    <min-api-version>1.4</min-api-version>
+    <source-location>
+      <url>TOBEUPDATED/index.html</url>
+    </source-location>
+    <icon>iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAAh0lEQVQ4jWNgoBD8hwIGBgYGRgZGBgYGBgZGBgYGBkYGBgZGBgZGBgYGBgYGBkYGBgZGRkZGBgYGBgZGBgZGBkYGBgZGBgYGBkZGRkZGRkZGBgYGBgYGBkZGRgYGBgYGBgZGRkZGRkZGBgZGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgA7KBP/GXo3vgAAAABJRU5ErkJggg==</icon>
+    <permissions>
+      <permission>full data</permission>
+    </permissions>
+  </desktop-extension>
+</manifest>
