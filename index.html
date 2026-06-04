@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Triple Axis Chart</title>
+
+  <!-- Tableau Extensions API -->
+  <script src="https://extensions.tableausoftware.com/tableau.extensions.1.latest.min.js"></script>
+  <!-- Chart.js for rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f1117;
+      --surface:   #181c27;
+      --border:    #2a2f3d;
+      --text:      #e8eaf0;
+      --muted:     #6b7280;
+      --accent1:   #4f9cf9;   /* axis 1 – blue   */
+      --accent2:   #f97316;   /* axis 2 – orange */
+      --accent3:   #22d3a0;   /* axis 3 – teal   */
+      --danger:    #f87171;
+      --radius:    6px;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px; }
+
+    /* ── LAYOUT ─────────────────────────────────────────── */
+    #app { display: flex; flex-direction: column; height: 100%; }
+
+    /* top toolbar */
+    #toolbar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; background: var(--surface);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    #toolbar h1 { font-size: 13px; font-weight: 600; letter-spacing: .04em; color: var(--text); white-space: nowrap; }
+    .badge { font-family: 'DM Mono', monospace; font-size: 10px; padding: 2px 7px; border-radius: 20px; background: #1e2535; color: var(--accent1); border: 1px solid #2d3a55; }
+    .spacer { flex: 1; }
+    #btnConfig { background: none; border: 1px solid var(--border); color: var(--muted); padding: 4px 12px; border-radius: var(--radius); cursor: pointer; font-size: 12px; font-family: inherit; }
+    #btnConfig:hover { border-color: var(--accent1); color: var(--accent1); }
+
+    /* main area */
+    #main { display: flex; flex: 1; overflow: hidden; }
+
+    /* chart pane */
+    #chartPane {
+      flex: 1; position: relative; padding: 16px 12px 12px;
+      display: flex; flex-direction: column;
+    }
+    #chartWrap { position: relative; flex: 1; }
+    canvas { width: 100% !important; height: 100% !important; }
+
+    /* config sidebar */
+    #sidebar {
+      width: 260px; flex-shrink: 0;
+      background: var(--surface); border-left: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+      transition: width .25s ease;
+    }
+    #sidebar.hidden { width: 0; overflow: hidden; border: none; }
+
+    .sidebar-header {
+      padding: 12px 14px 8px; font-size: 11px; font-weight: 600;
+      letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* axis config blocks */
+    .axis-block { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+    .axis-title {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 12px; font-weight: 600; margin-bottom: 10px;
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .dot1 { background: var(--accent1); }
+    .dot2 { background: var(--accent2); }
+    .dot3 { background: var(--accent3); }
+
+    label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; margin-top: 8px; }
+    select, input[type=text] {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 5px 8px; border-radius: var(--radius);
+      font-family: inherit; font-size: 12px; outline: none;
+    }
+    select:focus, input[type=text]:focus { border-color: var(--accent1); }
+
+    .row2 { display: flex; gap: 6px; }
+    .row2 > * { flex: 1; }
+
+    /* chart type selector */
+    .chart-types { display: flex; gap: 5px; margin-top: 6px; }
+    .ct-btn {
+      flex: 1; padding: 5px 0; background: var(--bg); border: 1px solid var(--border);
+      color: var(--muted); border-radius: var(--radius); cursor: pointer;
+      font-size: 11px; font-family: inherit; text-align: center;
+    }
+    .ct-btn.active { border-color: currentColor; }
+    .ct-btn[data-axis="1"].active { color: var(--accent1); }
+    .ct-btn[data-axis="2"].active { color: var(--accent2); }
+    .ct-btn[data-axis="3"].active { color: var(--accent3); }
+
+    /* actions */
+    .actions { padding: 12px 14px; margin-top: auto; display: flex; flex-direction: column; gap: 7px; }
+    .btn-primary {
+      background: var(--accent1); color: #fff; border: none;
+      padding: 8px; border-radius: var(--radius); cursor: pointer;
+      font-family: inherit; font-size: 13px; font-weight: 500;
+    }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-secondary {
+      background: none; color: var(--muted); border: 1px solid var(--border);
+      padding: 7px; border-radius: var(--radius); cursor: pointer;
+      font-family: inherit; font-size: 12px;
+    }
+    .btn-secondary:hover { color: var(--text); border-color: var(--text); }
+
+    /* status bar */
+    #status {
+      padding: 5px 12px; font-size: 11px; color: var(--muted);
+      background: var(--surface); border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+    .status-dot.ok { background: var(--accent3); }
+    .status-dot.err { background: var(--danger); }
+
+    /* overlay states */
+    #overlay {
+      position: absolute; inset: 0; display: flex;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px; z-index: 10;
+    }
+    #overlay .icon { font-size: 32px; }
+    #overlay .msg { font-size: 13px; color: var(--muted); text-align: center; max-width: 240px; line-height: 1.6; }
+    #overlay.hidden { display: none; }
+
+    .mono { font-family: 'DM Mono', monospace; }
+
+    /* Legend */
+    #legendBar {
+      display: flex; gap: 16px; padding: 0 2px 10px;
+      flex-shrink: 0; flex-wrap: wrap;
+    }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
+    .legend-line { width: 20px; height: 3px; border-radius: 2px; }
+
+    /* axis position toggles */
+    .pos-row { display: flex; gap: 5px; margin-top: 6px; }
+    .pos-btn {
+      flex: 1; padding: 4px; background: var(--bg); border: 1px solid var(--border);
+      color: var(--muted); border-radius: var(--radius); cursor: pointer;
+      font-size: 10px; font-family: 'DM Mono', monospace; text-align: center;
+    }
+    .pos-btn.active { border-color: var(--accent1); color: var(--accent1); }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TOOLBAR -->
+  <div id="toolbar">
+    <h1>Triple Axis</h1>
+    <span class="badge">3-AXIS</span>
+    <div class="spacer"></div>
+    <button id="btnRefresh" class="btn-secondary" style="padding:4px 10px;font-size:12px;">⟳ Refresh</button>
+    <button id="btnConfig">⚙ Configure</button>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+
+    <!-- CHART -->
+    <div id="chartPane">
+      <div id="legendBar"></div>
+      <div id="chartWrap">
+        <canvas id="myChart"></canvas>
+        <div id="overlay">
+          <div class="icon">📊</div>
+          <div class="msg">Connect a Tableau worksheet and configure your axes to render a triple-axis chart.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div id="sidebar">
+      <div class="sidebar-header">Configuration</div>
+
+      <!-- WORKSHEET -->
+      <div class="axis-block">
+        <label>Worksheet</label>
+        <select id="selWorksheet"><option value="">— select worksheet —</option></select>
+
+        <label>Dimension (X axis)</label>
+        <select id="selDimension"><option value="">— select field —</option></select>
+      </div>
+
+      <!-- AXIS 1 -->
+      <div class="axis-block">
+        <div class="axis-title"><span class="dot dot1"></span>Axis 1 (Left)</div>
+        <label>Measure</label>
+        <select id="selM1"><option value="">— select measure —</option></select>
+        <label>Chart Type</label>
+        <div class="chart-types">
+          <button class="ct-btn active" data-axis="1" data-type="bar">Bar</button>
+          <button class="ct-btn" data-axis="1" data-type="line">Line</button>
+          <button class="ct-btn" data-axis="1" data-type="scatter">Dot</button>
+        </div>
+        <label>Axis Position</label>
+        <div class="pos-row">
+          <button class="pos-btn active" data-axis="1" data-pos="left">Left</button>
+          <button class="pos-btn" data-axis="1" data-pos="right">Right</button>
+        </div>
+      </div>
+
+      <!-- AXIS 2 -->
+      <div class="axis-block">
+        <div class="axis-title"><span class="dot dot2"></span>Axis 2 (Right)</div>
+        <label>Measure</label>
+        <select id="selM2"><option value="">— select measure —</option></select>
+        <label>Chart Type</label>
+        <div class="chart-types">
+          <button class="ct-btn" data-axis="2" data-type="bar">Bar</button>
+          <button class="ct-btn active" data-axis="2" data-type="line">Line</button>
+          <button class="ct-btn" data-axis="2" data-type="scatter">Dot</button>
+        </div>
+        <label>Axis Position</label>
+        <div class="pos-row">
+          <button class="pos-btn" data-axis="2" data-pos="left">Left</button>
+          <button class="pos-btn active" data-axis="2" data-pos="right">Right</button>
+        </div>
+      </div>
+
+      <!-- AXIS 3 -->
+      <div class="axis-block">
+        <div class="axis-title"><span class="dot dot3"></span>Axis 3 (Far Right)</div>
+        <label>Measure</label>
+        <select id="selM3"><option value="">— select measure —</option></select>
+        <label>Chart Type</label>
+        <div class="chart-types">
+          <button class="ct-btn" data-axis="3" data-type="bar">Bar</button>
+          <button class="ct-btn active" data-axis="3" data-type="line">Line</button>
+          <button class="ct-btn" data-axis="3" data-type="scatter">Dot</button>
+        </div>
+        <label>Axis Position</label>
+        <div class="pos-row">
+          <button class="pos-btn" data-axis="3" data-pos="left">Left</button>
+          <button class="pos-btn active" data-axis="3" data-pos="right">Right</button>
+        </div>
+      </div>
+
+      <!-- DISPLAY OPTIONS -->
+      <div class="axis-block">
+        <div class="axis-title">Display Options</div>
+        <label>Chart Title</label>
+        <input type="text" id="inputTitle" placeholder="Triple Axis Chart" />
+        <label style="margin-top:10px;">
+          <input type="checkbox" id="chkGridlines" checked /> Show gridlines
+        </label>
+        <label style="margin-top:6px;">
+          <input type="checkbox" id="chkLegend" checked /> Show legend
+        </label>
+        <label style="margin-top:6px;">
+          <input type="checkbox" id="chkSmooth" /> Smooth lines
+        </label>
+      </div>
+
+      <div class="actions">
+        <button class="btn-primary" id="btnRender">Render Chart</button>
+        <button class="btn-secondary" id="btnExport">Export as PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS -->
+  <div id="status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Initializing extension…</span>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+const state = {
+  worksheets: [],
+  fields: [],
+  chartTypes: { 1: 'bar', 2: 'line', 3: 'line' },
+  axisPos:    { 1: 'left', 2: 'right', 3: 'right' },
+  chartInstance: null,
+  tableauReady: false,
+  usingDemoData: false,
+};
+
+const COLORS = {
+  1: { line: '#4f9cf9', fill: 'rgba(79,156,249,0.15)', axis: 'y1' },
+  2: { line: '#f97316', fill: 'rgba(249,115,22,0.12)',  axis: 'y2' },
+  3: { line: '#22d3a0', fill: 'rgba(34,211,160,0.12)',  axis: 'y3' },
+};
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+function setStatus(msg, type = 'idle') {
+  document.getElementById('statusText').textContent = msg;
+  const dot = document.getElementById('statusDot');
+  dot.className = 'status-dot' + (type === 'ok' ? ' ok' : type === 'err' ? ' err' : '');
+}
+
+function populateSelect(id, options, placeholder) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = `<option value="">${placeholder}</option>`;
+  options.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = o; opt.textContent = o;
+    sel.appendChild(opt);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// TABLEAU INIT
+// ─────────────────────────────────────────────────────────────
+async function initTableau() {
+  try {
+    await tableau.extensions.initializeAsync();
+    state.tableauReady = true;
+    setStatus('Connected to Tableau', 'ok');
+
+    const dash = tableau.extensions.dashboardContent.dashboard;
+    state.worksheets = dash.worksheets;
+
+    populateSelect(
+      'selWorksheet',
+      state.worksheets.map(w => w.name),
+      '— select worksheet —'
+    );
+
+    document.getElementById('selWorksheet').addEventListener('change', onWorksheetChange);
+    setStatus('Select a worksheet to begin', 'ok');
+  } catch (err) {
+    console.warn('Tableau not available, switching to demo mode:', err);
+    loadDemoMode();
+  }
+}
+
+async function onWorksheetChange() {
+  const name = document.getElementById('selWorksheet').value;
+  if (!name) return;
+
+  const ws = state.worksheets.find(w => w.name === name);
+  if (!ws) return;
+
+  setStatus('Loading fields…', 'idle');
+  try {
+    const summary = await ws.getSummaryDataAsync();
+    state.fields = summary.columns.map(c => c.fieldName);
+    const measures = state.fields.filter(f => {
+      // heuristic: exclude obvious dimension-like fields
+      return !['Name','Category','Sub-Category','Region','Segment','Country','State','City','Postal Code','Order ID','Customer ID','Customer Name','Product ID','Product Name','Ship Mode','Ship Date','Order Date'].includes(f);
+    });
+    const dims = state.fields;
+
+    populateSelect('selDimension', dims, '— select field —');
+    populateSelect('selM1', measures, '— none —');
+    populateSelect('selM2', measures, '— none —');
+    populateSelect('selM3', measures, '— none —');
+
+    setStatus(`Loaded ${state.fields.length} fields from "${name}"`, 'ok');
+  } catch (err) {
+    setStatus('Error loading fields: ' + err.message, 'err');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// DEMO MODE (when run outside Tableau)
+// ─────────────────────────────────────────────────────────────
+function loadDemoMode() {
+  state.usingDemoData = true;
+  setStatus('Demo mode — not connected to Tableau', 'idle');
+
+  const demoFields = ['Month','Revenue','Units Sold','Profit Margin','Return Rate','Customer Count'];
+  populateSelect('selWorksheet', ['Demo Dataset'], '— select worksheet —');
+  document.getElementById('selWorksheet').value = 'Demo Dataset';
+  populateSelect('selDimension', demoFields, '— select field —');
+  populateSelect('selM1', demoFields.slice(1), '— none —');
+  populateSelect('selM2', demoFields.slice(1), '— none —');
+  populateSelect('selM3', demoFields.slice(1), '— none —');
+
+  // pre-select sensible defaults
+  document.getElementById('selDimension').value = 'Month';
+  document.getElementById('selM1').value = 'Revenue';
+  document.getElementById('selM2').value = 'Units Sold';
+  document.getElementById('selM3').value = 'Profit Margin';
+
+  setStatus('Demo mode active — click "Render Chart" to preview', 'ok');
+}
+
+// ─────────────────────────────────────────────────────────────
+// DEMO DATA GENERATOR
+// ─────────────────────────────────────────────────────────────
+function generateDemoData(dimField, m1, m2, m3) {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const data = {
+    labels: months,
+    datasets: {}
+  };
+
+  const makeWave = (base, amp, noise) =>
+    months.map((_, i) => +(base + amp * Math.sin(i * 0.6) + (Math.random() - 0.5) * noise).toFixed(2));
+
+  const fieldData = {
+    'Revenue':        makeWave(420000, 80000, 30000),
+    'Units Sold':     makeWave(1800, 400, 150),
+    'Profit Margin':  makeWave(22, 6, 2),
+    'Return Rate':    makeWave(4.5, 1.5, 0.5),
+    'Customer Count': makeWave(3200, 600, 200),
+  };
+
+  const get = f => fieldData[f] || makeWave(100, 30, 10);
+  data.datasets[m1] = get(m1);
+  data.datasets[m2] = get(m2);
+  data.datasets[m3] = get(m3);
+  return data;
+}
+
+// ─────────────────────────────────────────────────────────────
+// FETCH REAL DATA FROM TABLEAU
+// ─────────────────────────────────────────────────────────────
+async function fetchTableauData(dimField, m1, m2, m3) {
+  const name = document.getElementById('selWorksheet').value;
+  const ws = state.worksheets.find(w => w.name === name);
+  const summary = await ws.getSummaryDataAsync();
+
+  const cols = summary.columns;
+  const dimIdx = cols.findIndex(c => c.fieldName === dimField);
+  const m1Idx  = cols.findIndex(c => c.fieldName === m1);
+  const m2Idx  = cols.findIndex(c => c.fieldName === m2);
+  const m3Idx  = cols.findIndex(c => c.fieldName === m3);
+
+  const labels = [], d1 = [], d2 = [], d3 = [];
+  summary.data.forEach(row => {
+    labels.push(dimIdx >= 0 ? row[dimIdx].formattedValue : '');
+    d1.push(m1Idx >= 0 ? (row[m1Idx].value ?? 0) : 0);
+    d2.push(m2Idx >= 0 ? (row[m2Idx].value ?? 0) : 0);
+    d3.push(m3Idx >= 0 ? (row[m3Idx].value ?? 0) : 0);
+  });
+
+  return { labels, datasets: { [m1]: d1, [m2]: d2, [m3]: d3 } };
+}
+
+// ─────────────────────────────────────────────────────────────
+// CHART RENDERING
+// ─────────────────────────────────────────────────────────────
+async function renderChart() {
+  const dimField = document.getElementById('selDimension').value;
+  const m1 = document.getElementById('selM1').value;
+  const m2 = document.getElementById('selM2').value;
+  const m3 = document.getElementById('selM3').value;
+
+  if (!m1 && !m2 && !m3) {
+    setStatus('Select at least one measure to render', 'err');
+    return;
+  }
+
+  setStatus('Fetching data…', 'idle');
+
+  let chartData;
+  try {
+    chartData = state.usingDemoData
+      ? generateDemoData(dimField, m1 || 'Revenue', m2 || 'Units Sold', m3 || 'Profit Margin')
+      : await fetchTableauData(dimField, m1, m2, m3);
+  } catch (err) {
+    setStatus('Data fetch error: ' + err.message, 'err');
+    return;
+  }
+
+  buildChart(chartData, m1, m2, m3);
+}
+
+function buildChart(data, m1, m2, m3) {
+  const smooth = document.getElementById('chkSmooth').checked;
+  const showGrid = document.getElementById('chkGridlines').checked;
+  const showLegend = document.getElementById('chkLegend').checked;
+  const title = document.getElementById('inputTitle').value || 'Triple Axis Chart';
+
+  // Destroy previous
+  if (state.chartInstance) { state.chartInstance.destroy(); state.chartInstance = null; }
+
+  // Build datasets
+  const datasets = [];
+  const activeMeasures = [];
+
+  [[1, m1], [2, m2], [3, m3]].forEach(([axisNum, measure]) => {
+    if (!measure) return;
+    const c = COLORS[axisNum];
+    const type = state.chartTypes[axisNum];
+    const values = data.datasets[measure];
+    if (!values) return;
+
+    activeMeasures.push({ axisNum, measure });
+
+    const ds = {
+      label: measure,
+      data: values,
+      yAxisID: `y${axisNum}`,
+      borderColor: c.line,
+      backgroundColor: type === 'bar' ? c.fill.replace('0.1', '0.7') : c.fill,
+      borderWidth: type === 'bar' ? 0 : 2,
+      pointRadius: type === 'scatter' ? 5 : type === 'line' ? 3 : 0,
+      pointBackgroundColor: c.line,
+      tension: smooth ? 0.4 : 0,
+      fill: type === 'bar',
+      type: type === 'scatter' ? 'line' : type,
+      order: axisNum,
+    };
+    if (type === 'scatter') {
+      ds.showLine = false;
+      ds.pointRadius = 5;
+    }
+    datasets.push(ds);
+  });
+
+  // Build Y axes
+  const scales = {
+    x: {
+      grid: { color: showGrid ? 'rgba(255,255,255,0.05)' : 'transparent', drawBorder: false },
+      ticks: { color: '#6b7280', font: { family: 'DM Mono', size: 10 } },
+    }
+  };
+
+  // Padding calculation for 3 axes on right
+  const rightAxes = [1,2,3].filter(n => {
+    const measure = [m1,m2,m3][n-1];
+    return measure && state.axisPos[n] === 'right';
+  });
+  const leftAxes = [1,2,3].filter(n => {
+    const measure = [m1,m2,m3][n-1];
+    return measure && state.axisPos[n] === 'left';
+  });
+
+  let rightOffset = 0;
+  let leftOffset = 0;
+
+  [1,2,3].forEach(axisNum => {
+    const measure = [m1,m2,m3][axisNum-1];
+    if (!measure) return;
+
+    const c = COLORS[axisNum];
+    const pos = state.axisPos[axisNum];
+    const isRight = pos === 'right';
+
+    const offset = isRight ? rightOffset : leftOffset;
+    if (isRight) rightOffset += 65; else leftOffset += 65;
+
+    scales[`y${axisNum}`] = {
+      type: 'linear',
+      position: pos,
+      offset: offset > 0,
+      ...(offset > 0 ? { afterFit: ctx => { ctx.width = 65; } } : {}),
+      grid: {
+        color: axisNum === 1 && showGrid ? 'rgba(255,255,255,0.05)' : 'transparent',
+        drawBorder: false,
+      },
+      ticks: {
+        color: c.line,
+        font: { family: 'DM Mono', size: 9 },
+        maxTicksLimit: 6,
+        callback: v => formatTick(v, measure),
+      },
+      title: {
+        display: true,
+        text: measure,
+        color: c.line,
+        font: { family: 'DM Sans', size: 10, weight: '500' },
+        padding: { bottom: 4 },
+      },
+    };
+  });
+
+  const ctx = document.getElementById('myChart').getContext('2d');
+  state.chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: data.labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600, easing: 'easeInOutQuart' },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: !!title,
+          text: title,
+          color: '#e8eaf0',
+          font: { family: 'DM Sans', size: 13, weight: '600' },
+          padding: { bottom: 10 },
+        },
+        tooltip: {
+          backgroundColor: '#1a1f2e',
+          borderColor: '#2a2f3d',
+          borderWidth: 1,
+          titleColor: '#e8eaf0',
+          bodyColor: '#9ca3af',
+          titleFont: { family: 'DM Sans', size: 12, weight: '600' },
+          bodyFont: { family: 'DM Mono', size: 11 },
+          padding: 10,
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${formatTick(ctx.raw, ctx.dataset.label)}`,
+          }
+        }
+      },
+      scales,
+    }
+  });
+
+  // Build legend
+  buildLegend(activeMeasures, m1, m2, m3);
+
+  document.getElementById('overlay').classList.add('hidden');
+  setStatus(`Chart rendered — ${activeMeasures.length} axes active`, 'ok');
+}
+
+function formatTick(v, field) {
+  if (typeof v !== 'number') return v;
+  const lower = (field || '').toLowerCase();
+  if (lower.includes('margin') || lower.includes('rate') || lower.includes('%')) return v.toFixed(1) + '%';
+  if (Math.abs(v) >= 1000000) return '$' + (v / 1000000).toFixed(1) + 'M';
+  if (Math.abs(v) >= 1000) return (lower.includes('revenue') || lower.includes('sales') || lower.includes('profit'))
+    ? '$' + (v / 1000).toFixed(0) + 'K'
+    : v.toLocaleString();
+  return v.toFixed(1);
+}
+
+function buildLegend(active, m1, m2, m3) {
+  const bar = document.getElementById('legendBar');
+  bar.innerHTML = '';
+  active.forEach(({ axisNum, measure }) => {
+    const c = COLORS[axisNum];
+    const type = state.chartTypes[axisNum];
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<div class="legend-line" style="background:${c.line};${type === 'scatter' ? 'background:none;outline:2px solid '+c.line+';outline-offset:-1px;border-radius:50%;width:10px;height:10px;' : type === 'bar' ? 'height:10px;border-radius:2px;' : ''}"></div><span>${measure} <span class="mono" style="font-size:9px;color:${c.line}">Y${axisNum}</span></span>`;
+    bar.appendChild(item);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// UI INTERACTIONS
+// ─────────────────────────────────────────────────────────────
+
+// Toggle sidebar
+document.getElementById('btnConfig').addEventListener('click', () => {
+  const sb = document.getElementById('sidebar');
+  sb.classList.toggle('hidden');
+});
+
+// Chart type buttons
+document.querySelectorAll('.ct-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const axis = +btn.dataset.axis;
+    document.querySelectorAll(`.ct-btn[data-axis="${axis}"]`).forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.chartTypes[axis] = btn.dataset.type;
+  });
+});
+
+// Position buttons
+document.querySelectorAll('.pos-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const axis = +btn.dataset.axis;
+    document.querySelectorAll(`.pos-btn[data-axis="${axis}"]`).forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.axisPos[axis] = btn.dataset.pos;
+  });
+});
+
+// Render button
+document.getElementById('btnRender').addEventListener('click', renderChart);
+
+// Refresh button
+document.getElementById('btnRefresh').addEventListener('click', async () => {
+  if (state.tableauReady) await onWorksheetChange();
+  renderChart();
+});
+
+// Export PNG
+document.getElementById('btnExport').addEventListener('click', () => {
+  if (!state.chartInstance) { setStatus('No chart to export', 'err'); return; }
+  const a = document.createElement('a');
+  a.href = state.chartInstance.toBase64Image('image/png', 1.0);
+  a.download = 'triple-axis-chart.png';
+  a.click();
+  setStatus('Chart exported as PNG', 'ok');
+});
+
+// ─────────────────────────────────────────────────────────────
+// BOOT
+// ─────────────────────────────────────────────────────────────
+initTableau();
+</script>
+</body>
+</html>
