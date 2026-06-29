@@ -1,0 +1,54 @@
+Private Sub Workbook_Open()
+    Dim ws As Worksheet
+    Dim currentUser As String
+    Dim coverSheetName As String
+    
+    coverSheetName = "Home" ' <-- change to your safe visible sheet
+    
+    currentUser = LCase(Environ("USERNAME"))
+    
+    Application.ScreenUpdating = False
+
+    
+    If currentUser = "dave.r.jackson" Then
+        For Each ws In ThisWorkbook.Worksheets
+            ws.Visible = xlSheetVisible
+        Next ws
+    Else
+        For Each ws In ThisWorkbook.Worksheets
+            If LCase(ws.Name) = currentUser Then
+                ws.Visible = xlSheetVisible
+            Else
+                If LCase(ws.Name) <> "home" Then
+                ws.Visible = 2
+                End If
+            End If
+        Next ws
+    End If
+    
+    Application.ScreenUpdating = True
+End Sub
+
+
+Private Sub Workbook_BeforeClose(Cancel As Boolean)
+    Dim ws As Worksheet
+    Dim coverSheetName As String
+    
+    coverSheetName = "Home" ' <-- change to your safe visible sheet
+    
+    Application.ScreenUpdating = False
+    
+    ' Ensure the cover sheet exists and is visible
+    On Error Resume Next
+    ThisWorkbook.Worksheets(coverSheetName).Visible = xlSheetVisible
+    On Error GoTo 0
+    
+    ' Hide all other sheets
+    For Each ws In ThisWorkbook.Worksheets
+        If ws.Name <> coverSheetName Then
+            ws.Visible = xlSheetVeryHidden
+        End If
+    Next ws
+    
+    Application.ScreenUpdating = True
+End Sub
